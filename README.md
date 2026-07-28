@@ -151,10 +151,10 @@ python src/run_batch_extract.py --speakers seedtts --layer 4 --threshold 0.24 \
 ## Performance
 Evaluated on 154 speakers (110 VCTK + 44 Seed-TTS Common Voice) × 5 utterances = 770 samples:
 
-| | SIM (WavLM) ↑ | SIM (ECAPA) ↑ | SIM (ResNet) ↑ | WER ↓ |
-|---|---|---|---|---|
-| Nearest preset (no opt.) | 0.713 | 0.132 | 0.099 | 1.84% |
-| **Proposed method** | **0.836** | **0.413** | **0.401** | 3.19% |
+| | SIM (WavLM) ↑ | SIM (ECAPA) ↑ | SIM (ResNet) ↑ | WER ↓ | UTMOS ↑ |
+|---|---|---|---|---|---|
+| Nearest preset (no opt.) | 0.713 | 0.132 | 0.099 | 1.84% | 4.47 |
+| **Proposed method** | **0.836** | **0.413** | **0.401** | 3.19% | 4.23 |
 
 Every speaker improves over its preset baseline under ECAPA and ResNet (154/154), and
 145/154 under WavLM-SV; Wilcoxon signed-rank p < 1e-24 on all three, paired effect size
@@ -163,14 +163,24 @@ d_z = 2.70 / 2.82 / 1.32 (ECAPA / ResNet / WavLM-SV).
 The WER mean sits on a long tail: the median is 0.00% and 107 of the 154 speakers
 transcribe with no error at all. See the caveat below.
 
+UTMOS is a *predicted* MOS, not a listening test, and it was trained on systems from
+earlier Blizzard and Voice Conversion Challenges, so absolute values here are out of
+domain. The useful reading is the paired one: the presets are style vectors the model
+shipped, so 4.23 against 4.47 means an extracted vector synthesizes at 95% of the level
+the model reaches from its own vectors, i.e. it lands inside the region the model was
+trained on. The median speaker gives up 0.11, at effect size d_z = 0.66 against 2.70 for
+the similarity gain on the same clips. (Real reference recordings score 3.90 under this
+predictor — it rates clean synthesis above natural speech, which is why the preset
+comparison, not the reference, is the anchor.)
+
 For scale, ECAPA cosine similarity on this data runs from **0.118** between unrelated voices
 to **0.682** between two different recordings of one speaker (0.804 between two halves of a
 single recording, which also fixes the channel). The nearest preset sits at 0.132, essentially
 at the impostor floor; the extracted style reaches about 60% of the two-recording level.
 Almost all of the gain comes from the optimization, not from starting near a preset.
 
-Reproduce with `src/measure_all.py`, `src/eval_simw.py`, `src/speaker_ceiling.py`,
-`src/verification_operating_point.py` and `src/compute_stats.py`.
+Reproduce with `src/measure_all.py`, `src/eval_simw.py`, `src/eval_utmos.py`,
+`src/speaker_ceiling.py`, `src/verification_operating_point.py` and `src/compute_stats.py`.
 
 ### A caveat on WER
 
@@ -195,6 +205,7 @@ src/                      # active code
 ├── prepare_vctk.py         VCTK speaker selection
 ├── measure_all.py          ECAPA + ResNet similarity, WER, preset-gender accuracy
 ├── eval_simw.py            WavLM-SV similarity
+├── eval_utmos.py           predicted naturalness (UTMOS), preset vs extracted
 ├── eval_batch.py           single-run ECAPA similarity + WER
 ├── calibrate_threshold.py  per-layer early-stopping threshold
 ├── speaker_ceiling.py      empirical same-speaker ceiling / different-speaker floor
