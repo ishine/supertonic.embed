@@ -292,10 +292,5 @@ If you use this work, please cite:
 
 Preprint: https://arxiv.org/abs/2607.25351
 
-An earlier and substantially different version is archived at
-[doi:10.5281/zenodo.19646514](https://doi.org/10.5281/zenodo.19646514) (April 2026): it also
-covered Kokoro, evaluated 44 speakers, and used WavLM layer 3. The numbers in this README and
-in the arXiv version supersede it.
-
 ## Looking for help?
 If you have any questions, please feel free to open an issue.
