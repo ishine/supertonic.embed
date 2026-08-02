@@ -47,7 +47,7 @@ The author disclaims all liability for misuse. Evaluation in the accompanying pa
 ### Convergence Guide:
 Optimization stops at a loss of **0.30**. That number is not arbitrary: synthesizing two
 different sentences from the *same* preset leaves a residual loss caused by content rather
-than by speaker mismatch, and across the ten presets that floor spans **0.20 to 0.41**
+than by speaker mismatch, and across the ten presets that floor spans **0.15 to 0.41**
 (mean 0.27) at layer 4. Stopping at 0.30 puts the residual below 62% of genuine
 same-voice pairs.
 
@@ -123,7 +123,7 @@ Measured on an RTX 3090 (24 GB), 5.4 s utterances:
 
 Roughly 1.03 GB per additional speaker. **16 is the practical maximum on 24 GB**; going
 higher buys little because the GPU is already saturated. This turns a 110-speaker run from
-about ten hours into about one.
+about five hours into about one.
 
 Two details the batching has to respect, both handled by the driver:
 
@@ -146,7 +146,7 @@ python src/run_batch_extract.py --speakers seedtts --layer 4 --threshold 0.24 \
 ## How long does it take?
 1. Model loading & conversion (~30 seconds)
 2. Auto style selection (~1 minute, 10 styles compared)
-3. Optimization: ~5-6 minutes per speaker solo, or ~0.5 minutes per speaker at batch 16
+3. Optimization: ~3 minutes per speaker solo, or ~0.5 minutes per speaker at batch 16
 
 ## Performance
 Evaluated on 154 speakers (110 VCTK + 44 Seed-TTS Common Voice) × 5 utterances = 770 samples:
@@ -168,7 +168,7 @@ earlier Blizzard and Voice Conversion Challenges, so absolute values here are ou
 domain. The useful reading is the paired one: the presets are style vectors the model
 shipped, so 4.23 against 4.47 means an extracted vector synthesizes at 95% of the level
 the model reaches from its own vectors, i.e. it lands inside the region the model was
-trained on. The median speaker gives up 0.11, at effect size d_z = 0.66 against 2.70 for
+trained on. The median speaker gives up 0.10, at effect size d_z = 0.66 against 2.70 for
 the similarity gain on the same clips. (Real reference recordings score 3.90 under this
 predictor — it rates clean synthesis above natural speech, which is why the preset
 comparison, not the reference, is the anchor.)
@@ -271,7 +271,7 @@ transfers to speaker-verification metrics it never saw during optimization.
 Male and female voices occupy different regions of the style space, and starting from the
 nearest preset converges fastest. It is a convenience rather than a requirement, though:
 a zero-vector start still reaches ECAPA 0.50 against 0.59 for the preset start, and even
-starting from a preset of the opposite vocal category reaches 0.41 — all far above the
+starting from a preset of the opposite vocal category reaches 0.46 — all far above the
 0.13 preset baseline. The optimizer recovers from a poor start rather than failing.
 
 ## Citation
