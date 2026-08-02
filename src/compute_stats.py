@@ -1,7 +1,12 @@
-"""Recompute the paper's statistics from committed CSVs.
+"""Recompute the paper's statistics from the 154-speaker run.
 
 Answers: (1) is the preset -> proposed improvement statistically significant?
-         (2) do the paper's reported 95% CIs reproduce as bootstrap CIs of the mean?
+         (2) do the paper's reported numbers reproduce from the run's metrics.csv?
+
+Reads results/main_layer4/metrics.csv, the output of run_batch_extract.py
+followed by measure_all.py, eval_simw.py and eval_utmos.py. The superseded
+layer-3 run in results/_layer3_seedtts is not used here; only the two
+Discussion pilots in the paper cite it, with their own settings stated in text.
 """
 import csv
 import os
@@ -12,6 +17,7 @@ from scipy import stats
 RNG = np.random.default_rng(0)
 B = 20000
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # repo root, one level above src/
+RUN = "results/main_layer4"
 
 
 def load(path):
@@ -54,76 +60,87 @@ def paired_report(name, opt, pre):
     return dict(mean=opt.mean(), ci=(lo, hi), p=w.pvalue, dz=dz)
 
 
+rows = load(f"{RUN}/metrics.csv")
+vctk = [r for r in rows if r["corpus"] == "vctk"]
+seed = [r for r in rows if r["corpus"] == "seedtts"]
+assert len(rows) == 154 and len(vctk) == 110 and len(seed) == 44, \
+    (len(rows), len(vctk), len(seed))
+
+
+def col(rs, c):
+    return np.array([float(r[c]) for r in rs])
+
+
 print("=" * 68)
-print("PAIRED SIGNIFICANCE TESTS  (preset baseline -> proposed), SupertonicTTS")
+print("PAIRED SIGNIFICANCE TESTS  (preset baseline -> proposed), 154 speakers")
 print("=" * 68)
 
-wav = load("results/_layer3_seedtts/sim_wavlm_all.csv")
-spk = load("results/_layer3_seedtts/sim_all_speakers.csv")
-wer = load("results/_layer3_seedtts/wer_all.csv")
-
-assert len(wav) == len(spk) == len(wer) == 44, (len(wav), len(spk), len(wer))
-# align by id
-wav_by = {r["id"]: r for r in wav}
-spk_by = {r["id"]: r for r in spk}
-ids = sorted(wav_by)
-
-opt_w = [float(wav_by[i]["opt_wavlm"]) for i in ids]
-pre_w = [float(wav_by[i]["pre_wavlm"]) for i in ids]
-opt_e = [float(spk_by[i]["opt_ecapa"]) for i in ids]
-pre_e = [float(spk_by[i]["pre_ecapa"]) for i in ids]
-opt_r = [float(spk_by[i]["opt_resnet"]) for i in ids]
-pre_r = [float(spk_by[i]["pre_resnet"]) for i in ids]
-
-r_w = paired_report("SIM_W  (WavLM-base-plus-sv)", opt_w, pre_w)
-r_e = paired_report("SIM_E  (ECAPA-TDNN)", opt_e, pre_e)
-r_r = paired_report("SIM_R  (ResNet)", opt_r, pre_r)
+r_w = paired_report("SIM_W  (WavLM-base-plus-sv)", col(rows, "opt_wavlmsv"),
+                    col(rows, "pre_wavlmsv"))
+r_e = paired_report("SIM_E  (ECAPA-TDNN)", col(rows, "opt_ecapa"),
+                    col(rows, "pre_ecapa"))
+r_r = paired_report("SIM_R  (ResNet)", col(rows, "opt_resnet"),
+                    col(rows, "pre_resnet"))
 
 print("\n" + "=" * 68)
 print("PAPER'S REPORTED CIs vs RECOMPUTED BOOTSTRAP CIs")
 print("=" * 68)
 for label, got, claimed in [
-    ("SIM_W", r_w["ci"], "[.84, .89]"),
-    ("SIM_E", r_e["ci"], "[.43, .48]"),
-    ("SIM_R", r_r["ci"], "[.42, .48]"),
+    ("SIM_E", r_e["ci"], "[.395, .430]"),
+    ("SIM_R", r_r["ci"], "[.385, .418]"),
 ]:
     print(f"  {label}: recomputed [{got[0]:.3f}, {got[1]:.3f}]   paper {claimed}")
+print("  paper also states p < 1e-26 for both, d_z 2.70 / 2.82, and")
+print("  154/154 improved under SIM_E and SIM_R, 145/154 under SIM_W")
 
 print("\n" + "=" * 68)
 print("CROSS-METRIC AGREEMENT (architecture independence)")
 print("=" * 68)
-rho, p = stats.spearmanr(opt_e, opt_r)
-print(f"  Spearman rho(ECAPA, ResNet) on proposed = {rho:.4f}  (p={p:.2e})")
-rho2, p2 = stats.spearmanr(opt_w, opt_e)
+rho, p = stats.spearmanr(col(rows, "opt_ecapa"), col(rows, "opt_resnet"))
+print(f"  Spearman rho(ECAPA, ResNet) on proposed = {rho:.4f}  (p={p:.2e})"
+      f"   paper: 0.881")
+rho2, p2 = stats.spearmanr(col(rows, "opt_wavlmsv"), col(rows, "opt_ecapa"))
 print(f"  Spearman rho(WavLM-SV, ECAPA)           = {rho2:.4f}  (p={p2:.2e})")
 
 print("\n" + "=" * 68)
-print("WER  (proposed only; no preset WER stored)")
+print("WER")
 print("=" * 68)
-w_arr = np.array([float(r["wer"]) for r in wer])
-lo, hi = boot_ci_mean(w_arr)
-print(f"  mean WER = {w_arr.mean()*100:.2f}%   95% CI [{lo*100:.2f}%, {hi*100:.2f}%]")
-print(f"  median   = {np.median(w_arr)*100:.2f}%   max = {w_arr.max()*100:.2f}%")
-print(f"  speakers with WER=0: {int((w_arr == 0).sum())}/44")
+ow, pw = col(rows, "opt_wer"), col(rows, "pre_wer")
+lo, hi = boot_ci_mean(ow)
+print(f"  preset   mean = {pw.mean()*100:.2f}%   (paper: 1.84%)")
+print(f"  proposed mean = {ow.mean()*100:.2f}%   95% CI [{lo*100:.2f}%, {hi*100:.2f}%]"
+      f"   (paper: 3.19%)")
+print(f"  proposed median = {np.median(ow)*100:.2f}%   speakers with WER=0: "
+      f"{int((ow == 0).sum())}/154   (paper: 0.00%, 107)")
 
 print("\n" + "=" * 68)
-print("SUBGROUP CHECK (original 20 vs extended 24) - protocol consistency")
+print("UTMOS  (predicted naturalness)")
 print("=" * 68)
-for g in ("original", "extended"):
-    sel = [i for i in ids if wav_by[i]["group"] == g]
-    ow = np.array([float(wav_by[i]["opt_wavlm"]) for i in sel])
-    oe = np.array([float(spk_by[i]["opt_ecapa"]) for i in sel])
-    print(f"  {g:9s} n={len(sel):2d}  SIM_W {ow.mean():.4f}   SIM_E {oe.mean():.4f}")
-g1 = [float(spk_by[i]["opt_ecapa"]) for i in ids if wav_by[i]["group"] == "original"]
-g2 = [float(spk_by[i]["opt_ecapa"]) for i in ids if wav_by[i]["group"] == "extended"]
-u = stats.mannwhitneyu(g1, g2)
-print(f"  Mann-Whitney U (SIM_E, original vs extended): p={u.pvalue:.3f}")
-print("  -> a LARGE p means the two batches are consistent (good)")
+ou, pu = col(rows, "opt_utmos"), col(rows, "pre_utmos")
+du = pu - ou
+print(f"  preset {pu.mean():.2f} -> extracted {ou.mean():.2f}   "
+      f"ratio {ou.mean()/pu.mean()*100:.1f}%   (paper: 4.47 -> 4.23, 95%)")
+print(f"  median paired drop = {np.median(du):.2f}   d_z = "
+      f"{du.mean()/du.std(ddof=1):.2f}   (paper: 0.10, 0.66)")
+
+print("\n" + "=" * 68)
+print("TABLE 1 REPRODUCTION  (means per corpus)")
+print("=" * 68)
+print(f"  {'group':<12}{'cond':<10}{'SIM_E':>7}{'SIM_R':>7}{'SIM_W':>7}{'WER':>8}")
+for gname, rs in (("All", rows), ("VCTK", vctk), ("Seed-TTS", seed)):
+    for cond, pre in (("preset", "pre"), ("proposed", "opt")):
+        print(f"  {gname:<12}{cond:<10}"
+              f"{col(rs, f'{pre}_ecapa').mean():>7.3f}"
+              f"{col(rs, f'{pre}_resnet').mean():>7.3f}"
+              f"{col(rs, f'{pre}_wavlmsv').mean():>7.3f}"
+              f"{col(rs, f'{pre}_wer').mean()*100:>7.2f}%")
 
 print("\n" + "=" * 68)
 print("PER-SPEAKER RANGE")
 print("=" * 68)
-print(f"  SIM_W range: {min(opt_w):.4f} - {max(opt_w):.4f}")
-print(f"  SIM_E range: {min(opt_e):.4f} - {max(opt_e):.4f}")
+oe = col(rows, "opt_ecapa")
+print(f"  SIM_E range: {oe.min():.4f} - {oe.max():.4f}")
+print(f"  SIM_W range: {col(rows, 'opt_wavlmsv').min():.4f} - "
+      f"{col(rows, 'opt_wavlmsv').max():.4f}")
 print(f"  speakers below preset baseline (SIM_E): "
-      f"{sum(1 for a, b_ in zip(opt_e, pre_e) if a < b_)}/44")
+      f"{int((oe < col(rows, 'pre_ecapa')).sum())}/154")
